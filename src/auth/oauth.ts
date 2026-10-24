@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AuditLog } from '../audit/audit.js';
 import { isScope, SCOPES, toolsAllowedByScopes, type ToolName } from '../policy/scopes.js';
-import type { StateStore, StoredClient, StoredRefreshToken } from '../store.js';
+import type { OwnerSettings, StateStore, StoredClient, StoredRefreshToken } from '../store.js';
 import type { Clock } from '../util/clock.js';
 import { humanCode, pkceChallenge, randomToken, safeEqual, sha256 } from '../util/crypto.js';
 import { HttpError, readForm, readJson, send, sendHtml, sendJson } from '../util/http.js';
@@ -93,6 +93,7 @@ export interface AuthServerOptions {
   clock: Clock;
   fetchClientMetadata: CimdFetcher;
   fetchJwks?: CimdFetcher;
+  settings: () => OwnerSettings;
   toolCeiling: readonly ToolName[];
   accessTokenTtlSeconds?: number;
   refreshTokenTtlSeconds?: number;
@@ -323,7 +324,11 @@ export class AuthorizationServer extends EventEmitter {
         case '/token':
           this.requireMethod(req, 'POST');
           if (!this.limits.token.take('global')) throw new OAuthError('temporarily_unavailable', 'Too many token requests; slow down.', 429);
-          sendJson(res, 200, await this.token(await readForm(req), req, identity), TOKEN_HEADERS);
+          {
+            const form = await readForm(req);
+            console.warn(`[oauth] /token params: ${[...form.keys()].sort().join(', ') || '(none)'}; authz=${req.headers.authorization?.split(' ')[0] ?? 'none'}; ct=${req.headers['content-type'] ?? 'none'}`);
+            sendJson(res, 200, await this.token(form, req, identity), TOKEN_HEADERS);
+          }
           return true;
         case '/revoke':
           this.requireMethod(req, 'POST');
@@ -337,12 +342,15 @@ export class AuthorizationServer extends EventEmitter {
         const headers: Record<string, string> = { ...TOKEN_HEADERS };
         if (error.status === 401) headers['WWW-Authenticate'] = 'Basic realm="remote-browser-use"';
         sendJson(res, error.status, { error: error.code, error_description: error.description }, headers);
+        console.warn(`[oauth] ${path} → ${error.status} ${error.code}: ${error.description}`);
         return true;
       }
       if (error instanceof HttpError) {
         sendJson(res, error.status, { error: 'invalid_request', error_description: error.message }, TOKEN_HEADERS);
+        console.warn(`[oauth] ${path} → ${error.status} ${error.message}`);
         return true;
       }
+      console.error(`[oauth] ${path} → unexpected error`, error);
       throw error;
     }
     return false;
@@ -442,6 +450,7 @@ export class AuthorizationServer extends EventEmitter {
           jwksUri: doc.jwks_uri,
           jwks: doc.jwks,
           tokenEndpointAuthSigningAlg: doc.token_endpoint_auth_signing_alg,
+          tokenEndpointAuthMethodsSupported: doc.token_endpoint_auth_methods_supported,
           createdAt: this.now(),
           approved: false,
           scopes: [],
@@ -456,6 +465,7 @@ export class AuthorizationServer extends EventEmitter {
         client.jwksUri = doc.jwks_uri;
         client.jwks = doc.jwks;
         client.tokenEndpointAuthSigningAlg = doc.token_endpoint_auth_signing_alg;
+        client.tokenEndpointAuthMethodsSupported = doc.token_endpoint_auth_methods_supported;
       }
       this.opts.store.save();
       return client;
@@ -517,6 +527,15 @@ export class AuthorizationServer extends EventEmitter {
       this.pending.set(pending.id, pending);
       this.opts.audit.record({ event: 'authorization_requested', client: client.clientId });
       this.emit('changed');
+      if (this.opts.settings().autoApproveClients && !client.blocked) {
+        // Relaxed default: approve immediately with every requested scope (or
+        // all scopes when none were requested) and all tools those scopes allow.
+        const scopes = pending.requestedScopes.length ? pending.requestedScopes : [...SCOPES];
+        this.approveAuthorization(pending.id, scopes, toolsAllowedByScopes(scopes, this.opts.toolCeiling));
+        res.writeHead(302, { Location: pending.redirectTo!, 'Cache-Control': 'no-store' });
+        res.end();
+        return;
+      }
       this.renderWaiting(res, pending, client);
     } catch (error) {
       const e = error instanceof OAuthError ? error : new OAuthError('server_error', 'Unexpected error');
@@ -620,6 +639,7 @@ ${refresh ? `<meta http-equiv="refresh" content="2;url=${escapeHtml(refresh)}">`
     const badTool = tools.find((t) => !(allowedTools as string[]).includes(t));
     if (badTool) throw new Error(`Tool ${badTool} is not allowed by the granted scopes or the --tools ceiling.`);
     client.approved = true;
+    client.blocked = false;
     client.scopes = granted;
     client.tools = [...new Set(tools)];
     this.opts.store.save();
@@ -698,7 +718,10 @@ ${refresh ? `<meta http-equiv="refresh" content="2;url=${escapeHtml(refresh)}">`
     for (const p of this.pending.values()) if (p.clientId === clientId && p.status === 'pending') p.status = 'denied';
     this.state.oauth.refreshTokens = this.state.oauth.refreshTokens.filter((r) => r.clientId !== clientId);
     const client = this.client(clientId);
-    if (client) client.approved = false;
+    if (client) {
+      client.approved = false;
+      client.blocked = true;
+    }
     if (remove) this.state.oauth.clients = this.state.oauth.clients.filter((c) => c.clientId !== clientId);
     this.opts.store.save();
     this.opts.audit.record({ event: 'token_revoked', client: clientId, decision: remove ? 'client_removed' : 'client_revoked' });
@@ -712,7 +735,10 @@ ${refresh ? `<meta http-equiv="refresh" content="2;url=${escapeHtml(refresh)}">`
     this.codes.clear();
     for (const p of this.pending.values()) if (p.status === 'pending') p.status = 'denied';
     this.state.oauth.refreshTokens = [];
-    for (const c of this.state.oauth.clients) c.approved = false;
+    for (const c of this.state.oauth.clients) {
+      c.approved = false;
+      c.blocked = true;
+    }
     this.opts.store.save();
     this.emit('all-revoked');
     this.emit('changed');
@@ -749,7 +775,15 @@ ${refresh ? `<meta http-equiv="refresh" content="2;url=${escapeHtml(refresh)}">`
     if (!client) throw new OAuthError('invalid_client', 'Unknown client', 401);
     if (client.tokenEndpointAuthMethod === 'private_key_jwt') {
       if (secret || usedBasic) throw new OAuthError('invalid_client', 'This client authenticates with a JWT assertion, not a secret', 401);
-      await this.verifyAssertion(client, params, identity);
+      const hasAssertion = Boolean(params.get('client_assertion') || params.get('client_assertion_type'));
+      if (hasAssertion) {
+        await this.verifyAssertion(client, params, identity);
+      } else if (!client.tokenEndpointAuthMethodsSupported?.includes('none')) {
+        // The client declared private_key_jwt and did not advertise 'none', so a
+        // missing assertion is a real auth failure rather than an interop quirk.
+        throw new OAuthError('invalid_client', 'Client authentication failed: missing client_assertion', 401);
+      }
+      // else: the client's own metadata says it can act as a public PKCE client.
     } else if (params.get('client_assertion') || params.get('client_assertion_type')) {
       throw new OAuthError('invalid_client', 'This client is not registered for JWT assertion authentication', 401);
     } else if (client.secretHash) {

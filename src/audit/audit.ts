@@ -25,6 +25,7 @@ export interface AuditEvent {
     | 'approval'
     | 'tab_request'
     | 'kill_switch'
+    | 'settings_changed'
     | 'owner_login'
     | 'owner_login_failed'
     | 'download';

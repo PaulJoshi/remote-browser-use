@@ -49,6 +49,8 @@ export async function startOAuthEnv(opts: { publicUrl?: boolean } = {}): Promise
   const base = `http://127.0.0.1:${port}`;
   const clock: FakeClock = { t: Date.now(), now() { return this.t; } };
   const store = new StateStore(join(dir, 'state.json'));
+  // Unit tests exercise the strict/manual approval paths by default.
+  store.state.settings = { autoApproveClients: false, shareEntireBrowser: false, actionApprovals: 'sensitive' };
   if (opts.publicUrl !== false) store.state.publicUrl = normalizePublicUrl(base, port);
   const audit = new AuditLog(join(dir, 'audit.log'));
   const cimdDocs = new Map<string, unknown>();
@@ -66,6 +68,7 @@ export async function startOAuthEnv(opts: { publicUrl?: boolean } = {}): Promise
       if (!jwksDocs.has(url)) throw new Error('not found');
       return jwksDocs.get(url);
     },
+    settings: () => store.state.settings,
   });
   const listener = new McpListener({
     port,

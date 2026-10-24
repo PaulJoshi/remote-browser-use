@@ -184,7 +184,7 @@
     openInput.addEventListener('input', () => (drafts.openUrl = openInput.value));
     return [
       h('h2', {}, 'Tabs in the remote-browser-use browser'),
-      h('p', { class: 'muted' }, 'Only tabs you share are visible to an agent, and only on the sites listed. New tabs and popups are never shared automatically.'),
+      h('p', { class: 'muted' }, state.settings?.shareEntireBrowser ? 'Every tab in this browser is shared with all connected chat apps. Enable explicit sharing in Advanced security settings to restrict this.' : 'Only tabs you share are visible to an agent, and only on the sites listed. New tabs and popups are never shared automatically.'),
       ...state.tabs.map((t) => {
         const tabGrants = state.grants.filter((g) => g.tabId === t.tabId);
         const frameOrigins = [...new Set(t.frames.map((f) => f.origin).filter((o) => o !== t.origin && o !== 'null'))];
@@ -231,6 +231,22 @@
     ];
   }
 
+  function renderAdvanced() {
+    const s = state.settings ?? {};
+    const strict = (key, label) => h('label', { class: 'check' },
+      h('input', { type: 'checkbox', checked: !s[key], onchange: (e) => act('/api/settings', { [key]: !e.target.checked }, 'Settings updated.') }), label);
+    const approvalSel = h('select', { onchange: (e) => act('/api/settings', { actionApprovals: e.target.value }, 'Settings updated.') },
+      ...[['never', 'Never ask me'], ['sensitive', 'Sensitive actions only'], ['all', 'Every action']].map(([v, l]) => h('option', { value: v, selected: s.actionApprovals === v }, l)));
+    return [
+      h('h2', {}, 'Advanced security settings'),
+      h('p', { class: 'muted' }, 'By default everything in this dedicated browser is available to connected chat apps. Enable stricter controls below — recommended once you sign in to real accounts here.'),
+      h('div', { class: 'card' },
+        h('div', { class: 'row' }, strict('autoApproveClients', 'Require my approval before a chat app connects')),
+        h('div', { class: 'row' }, strict('shareEntireBrowser', 'Require me to share tabs and sites explicitly')),
+        h('div', { class: 'row' }, h('label', {}, 'Ask me to approve agent actions: ', approvalSel))),
+    ];
+  }
+
   function renderActivity() {
     return [
       h('h2', {}, 'Recent activity (metadata only)'),
@@ -239,12 +255,13 @@
     ];
   }
 
-  const sections = { setup: renderSetup, pending: renderPending, tabs: renderTabs, clients: renderClients, activity: renderActivity };
+  const sections = { setup: renderSetup, pending: renderPending, tabs: renderTabs, clients: renderClients, advanced: renderAdvanced, activity: renderActivity };
   const keys = {
     setup: (s) => [s.publicUrl, s.connectorUrl],
     pending: (s) => [s.pendingAuthorizations, s.approvals, s.tabs.map((t) => [t.tabId, t.title, t.url, t.shareable, t.frames]), Math.floor(Date.now() / 5000)],
     tabs: (s) => [s.tabs, s.grants, s.clients.map((c) => [c.clientId, c.approved, c.name])],
     clients: (s) => s.clients,
+    advanced: (s) => s.settings,
     activity: (s) => s.audit,
   };
 

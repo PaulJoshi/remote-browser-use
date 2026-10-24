@@ -10,9 +10,9 @@ The user grants individual tabs, origins, and capabilities in a local panel. Onl
 
 1. Install a supported Node.js LTS and run `npx remote-browser-use`. First run downloads the npm package and, if missing, the **Playwright-matched Chromium binary**; report size/progress/errors and never run the browser as the user's default Chrome profile.
 2. The CLI creates a private `~/.remote-browser-use/` directory for config, owner keys, the dedicated browser profile, and metadata-only audit records. Start a protected MCP/OAuth server on `127.0.0.1:8931` and a **separate admin server** on `127.0.0.1:8932` (pick free ports or fail clearly on collision). Open the controlled browser and local admin panel, print each URL and a one-time local owner-setup code without putting the code in a URL.
-3. The user opens or signs into sites in the controlled browser, then grants the intended tabs and tools locally. Default to no granted tabs and no enabled tools. The panel can offer an explicit read-only preset and an explicit interactive preset; neither is silently enabled. Opening new tabs/popups does not grant them.
+3. The user opens or signs into sites in the controlled browser. By default every connected client can use the whole dedicated browser; the panel's advanced settings can instead require explicit per-tab/origin/tool grants. The panel offers an explicit read-only preset and an explicit interactive preset for tool selection.
 4. To connect a **web chat**, forward **only port 8931** over HTTPS. In VS Code, sign into port forwarding if prompted, change that forwarded port's visibility from its default **Private** to **Public**, and copy the public HTTPS base URL. Other HTTPS tunnels are acceptable if they preserve MCP/OAuth requests correctly. A public forwarded URL may change between runs.
-5. Set that HTTPS base URL in the local panel (or start with `--public-url` when known in advance). Only advertise working OAuth metadata once a correct public URL is configured. Display the exact `/mcp` connector URL. Add it to the chat app, complete its OAuth flow, and approve its client, scopes, and pending tab requests locally. OAuth must be required even when the HTTP service appears to be loopback-only.
+5. Set that HTTPS base URL in the local panel (or start with `--public-url` when known in advance). Only advertise working OAuth metadata once a correct public URL is configured. Display the exact `/mcp` connector URL. Add it to the chat app and complete its OAuth flow; clients are auto-approved with all requested scopes unless the owner enables manual approval in advanced settings. OAuth must be required even when the HTTP service appears to be loopback-only.
 6. Stop sharing a tab, revoke tokens, approve/deny sensitive actions, or kill all access from the local panel. Stopping the CLI shuts down browser control and HTTP listeners. No permanent service is installed automatically.
 
 One `npx` command launches the **local** software. Public forwarding, chat connector setup, site login, and human authorization cannot be performed invisibly. If the public base URL changes, require reauthorization and connector update rather than silently keeping an invalid OAuth issuer. The local browser can be used without a tunnel, but remote connector authorization must fail closed until public URL metadata is valid.
@@ -26,7 +26,7 @@ One `npx` command launches the **local** software. Public forwarding, chat conne
 --tools <list>             maximum enabled tool allowlist; default none
 --allow-domains <list>     additional domain restriction on local grants
 --deny-domains <list>      prohibited domains (deny wins)
---approve sensitive|all   local approval policy; default sensitive
+--approve never|sensitive|all   local approval policy; overrides the saved setting (default never)
 --config <path>            explicit local configuration file
 --help / --version
 ```

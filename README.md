@@ -14,9 +14,9 @@ No browser extension, no ZIP install, no hosted relay, and no access to your exi
 
 1. **Run it.** `npx remote-browser-use` downloads a matching Chromium build on first use (requires network; can take a few minutes), launches it with an isolated persistent profile, and opens the control panel.
 2. **Use the dedicated browser.** Sign in to sites normally, in that window. The agent never sees your default-profile tabs, cookies, or logins.
-3. **Share deliberately.** In the local control panel you grant a chat client specific tabs, allowed origins, and tool capabilities — default is nothing shared.
+3. **Connect your chat.** By default the whole dedicated browser is shared with connected clients and actions run without prompts. Want tighter control? The panel's **advanced security settings** can require approval for new connections, explicit per-tab/site sharing, and per-action approvals.
 4. **Forward only the MCP port.** Use VS Code's Ports view or another HTTPS tunnel to expose port `8931`. Set it to **Public** so a cloud chat can reach it. Public means *reachable* — OAuth is still mandatory. **Never forward port `8932`** (the control panel).
-5. **Connect your chat.** Paste the forwarded `https://…` base URL into the control panel (or pass `--public-url`), then add the displayed `/mcp` URL as a custom MCP connector and approve the OAuth request in the panel.
+5. **Authorize the chat.** Paste the forwarded `https://…` base URL into the control panel (or pass `--public-url`), then add the displayed `/mcp` URL as a custom MCP connector. OAuth approval happens automatically by default; enable manual approval in advanced settings to review each client first.
 
 Stopping the CLI ends all remote access; the browser profile is kept so your logins survive restarts.
 
@@ -32,8 +32,8 @@ Launches a bundled fictional security-awareness course (gated slides, quizzes, a
 
 - **OAuth on every MCP request**, including loopback, because a local port may later be forwarded. Authorization code + PKCE (S256), resource indicators/audience binding, client discovery via CIMD and Dynamic Client Registration, short-lived tokens, refresh rotation, revocation, and explicit owner consent.
 - **Two listeners, two jobs.** MCP + OAuth on one port (default `8931`); owner panel, tab sharing, approvals, and kill switch on a separate local-only port (default `8932`). No admin route exists on the MCP listener.
-- **Grants, not trust.** Per-client tab/origin/tool grants; new tabs, popups, redirects, and cross-origin frames are never automatically shared. Policy is re-evaluated on every read and action.
-- **Sensitive actions need approval.** Password/OTP entry, form submission, first-time origins, opening/closing tabs, uploads/downloads — a local human approves each one. Timeouts deny.
+- **Grants and isolation.** Connected clients can be limited to specific tabs, origins, and tools (off by default — enable in advanced settings). Policy is re-evaluated on every read and action, and domain allow/deny rules always apply.
+- **Optional action approvals.** With `sensitive` or `all` enabled in advanced settings, password/OTP entry, form submission, first-time origins, opening/closing tabs, and uploads/downloads wait for a local human. Default is automatic approval — every action is still audited.
 - **Privacy by construction.** Typed values are never echoed, password/OTP values never appear in snapshots, screenshots mask pixels from ungranted frames, and the audit log records metadata only — never page content, URLs with query strings, typed text, or secrets.
 - **Honest limits.** Revoking access blocks future reads and actions; it cannot undo browser effects that already completed.
 

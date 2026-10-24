@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -31,6 +31,8 @@ export interface Harness {
 export interface HarnessOptions {
   config?: FileConfig;
   dataDir?: string;
+  /** When true, use the shipped relaxed defaults instead of strict test settings. */
+  relaxed?: boolean;
   fixtures?: FixtureServers;
   approvalTimeoutSeconds?: number;
   accessTokenTtlSeconds?: number;
@@ -45,6 +47,14 @@ export async function startHarness(opts: HarnessOptions = {}): Promise<Harness> 
   const adminPort = opts.config?.adminPort ?? (await freePort());
   const publicUrl = opts.publicUrl === null ? undefined : (opts.publicUrl ?? `http://127.0.0.1:${port}`);
   const config = resolveConfig({}, { port, adminPort, publicUrl, approvalTimeoutSeconds: opts.approvalTimeoutSeconds ?? 15, openPanel: false, ...opts.config });
+  if (!opts.relaxed) {
+    // E2E tests exercise the strict grant/approval paths; enable relaxed mode explicitly per test.
+    const stateFile = join(dataDir, 'state.json');
+    const state = existsSync(stateFile) ? (JSON.parse(readFileSync(stateFile, 'utf8')) as Record<string, unknown>) : { version: 1 };
+    state.settings = { autoApproveClients: false, shareEntireBrowser: false, actionApprovals: 'sensitive' };
+    mkdirSync(dataDir, { recursive: true });
+    writeFileSync(stateFile, JSON.stringify(state), { mode: 0o600 });
+  }
   const app = await App.start({
     config,
     dataDir,

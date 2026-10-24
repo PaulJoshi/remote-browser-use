@@ -5,7 +5,10 @@
 - Unscoped npm name: **`remote-browser-use`**. npm returned 404 on 2026-10-24, but that is not a reservation.
 - V1 browser: a separately launched, persistent Playwright Chromium; **no extension or ZIP**, default-profile CDP attach, hosted relay, or automatic access to the user's everyday browser.
 - First-class remote path: public HTTPS port forwarding, with VS Code instructions. `npx` only launches local software; the chat and forwarding still require setup.
-- Public HTTP MCP always uses OAuth; admin is on a distinct non-forwarded local port. Tools and tab grants are denied by default. Approval mode defaults to `sensitive`, and `runPlaywrightCode` is deferred.
+- Public HTTP MCP always uses OAuth; admin is on a distinct non-forwarded local port. `runPlaywrightCode` is deferred.
+- **Default posture changed 2026-10-24 (owner decision):** clients auto-approve with all scopes, the whole dedicated browser is shared, and action approvals default to `never`. Strict mode (manual approval, per-tab grants, `sensitive`/`all`) is opt-in via the panel's advanced security settings.
+- Source repository: github.com/PaulJoshi/remote-browser-use (public); license Apache-2.0.
+- ChatGPT remote MCP: requires `private_key_jwt` support (its CIMD declares it, JWKS at chatgpt.com/oauth/jwks.json); in practice its connector also sends PKCE-only token requests when its metadata advertises `none`. Verified working end-to-end through a VS Code dev tunnel.
 - The tool is spelled `typeInPage`. A bundled fictional, no-login training fixture is the reliable demo/test target.
 
 ## Owner decisions required before publication

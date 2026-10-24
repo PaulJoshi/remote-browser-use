@@ -61,7 +61,10 @@ export function verifyClientAssertion(args: {
   now: number;
   seenJti?: (jti: string, expMs: number) => boolean;
 }): AssertionClaims {
-  if (args.assertionType !== CLIENT_ASSERTION_TYPE) throw new Error('Unsupported client_assertion_type');
+  // Some clients omit client_assertion_type or use the OAuth 2.0 JWT bearer alias.
+  if (args.assertionType !== null && args.assertionType !== CLIENT_ASSERTION_TYPE && args.assertionType !== 'urn:ietf:params:oauth:grant-type:jwt-bearer') {
+    throw new Error(`Unsupported client_assertion_type "${args.assertionType}"`);
+  }
   const assertion = args.assertion ?? '';
   if (!assertion || assertion.length > MAX_ASSERTION_BYTES) throw new Error('Missing or oversized client_assertion');
   const parts = assertion.split('.');

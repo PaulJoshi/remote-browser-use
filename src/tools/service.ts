@@ -8,8 +8,8 @@ import { setIndicator } from '../browser/indicator.js';
 import type { BrowserManager, Tab } from '../browser/manager.js';
 import { ScreenshotDenied, screenshotTab } from '../browser/screenshot.js';
 import { pageText, snapshotTab } from '../browser/snapshot.js';
-import type { ApprovalMode } from '../config.js';
 import type { ApprovalKind, ApprovalQueue } from '../policy/approvals.js';
+import type { OwnerSettings } from '../store.js';
 import type { GrantStore, TabGrant } from '../policy/grants.js';
 import { TOOL_SCOPES, type ToolName } from '../policy/scopes.js';
 import { checkDestination, type Lookup, resolvesToRestricted, systemLookup, type UrlPolicyOptions } from '../policy/urlPolicy.js';
@@ -57,7 +57,7 @@ export interface ToolServiceDeps {
   auth: AuthorizationServer;
   audit: AuditLog;
   urlOpts: UrlPolicyOptions;
-  approvalMode: ApprovalMode;
+  settings: () => OwnerSettings;
   approvalTimeoutMs: number;
   downloadsDir: string;
   lookup?: Lookup;
@@ -169,14 +169,50 @@ export class ToolService {
     return this.d.auth.clientName(clientId);
   }
 
+  private shareAll(): boolean {
+    return this.d.settings().shareEntireBrowser;
+  }
+
+  /** Cross-origin frame origins currently inside a tab that may be shared. */
+  private shareableFrameOrigins(tab: Tab): string[] {
+    return tab.page
+      .frames()
+      .filter((f) => !f.isDetached() && f !== tab.page.mainFrame())
+      .map((f) => tab.frameOrigin(f))
+      .filter((o) => this.d.grants.grantable(o));
+  }
+
+  /** In whole-browser mode, grant every shareable tab to this client. */
+  private ensureAllShared(clientId: string): void {
+    if (!this.shareAll()) return;
+    for (const tab of this.d.browser.tabs.values()) {
+      if (tab.closed) continue;
+      const origin = tab.topOrigin();
+      if (!this.d.grants.grantable(origin)) continue;
+      const grant = this.d.grants.get(clientId, tab.id);
+      if (!grant) this.d.grants.grant(clientId, tab.id, [origin], this.shareableFrameOrigins(tab));
+      else if (!this.d.grants.originAllowed(grant, origin)) {
+        try {
+          this.d.grants.addOrigin(clientId, tab.id, origin);
+        } catch {
+          /* origin became unshareable */
+        }
+      }
+    }
+  }
+
   /** Resolve a granted tab whose current top-level origin is still shared with this client. */
   private pageCtx(ctx: ToolContext, tabIdArg: unknown, setTab: (id: string) => void, opts: { allowPaused?: boolean } = {}): PageCtx {
+    this.ensureAllShared(ctx.clientId);
     const tabId = typeof tabIdArg === 'string' && tabIdArg ? tabIdArg : this.d.grants.selected(ctx.clientId);
     if (!tabId) throw new ToolError('no_tab', 'No shared tab is selected. Call listTabs, or requestTabAccess to ask the owner to share a tab.');
     setTab(tabId);
-    const grant = this.d.grants.get(ctx.clientId, tabId);
-    if (!grant) throw new ToolError('tab_not_shared', `Tab ${sanitizeText(tabId, 40)} is not shared with you. Call listTabs to see shared tabs, or requestTabAccess.`);
+    let grant = this.d.grants.get(ctx.clientId, tabId);
     const tab = this.d.browser.tab(tabId);
+    if (!grant && tab && this.shareAll() && this.d.grants.grantable(tab.topOrigin())) {
+      grant = this.d.grants.grant(ctx.clientId, tabId, [tab.topOrigin()], this.shareableFrameOrigins(tab));
+    }
+    if (!grant) throw new ToolError('tab_not_shared', `Tab ${sanitizeText(tabId, 40)} is not shared with you. Call listTabs to see shared tabs, or requestTabAccess.`);
     if (!tab) {
       this.d.grants.forgetTab(tabId);
       throw new ToolError('tab_closed', `Tab ${tabId} was closed.`);
@@ -198,10 +234,23 @@ export class ToolService {
   }
 
   private frameAllowed(p: PageCtx, frame: Frame): boolean {
-    return !frame.isDetached() && this.d.grants.frameAllowed(p.grant, p.tab.frameOrigin(frame), p.tab.topOrigin());
+    if (frame.isDetached()) return false;
+    const origin = p.tab.frameOrigin(frame);
+    if (this.shareAll() && this.d.grants.grantable(origin) && !this.d.grants.frameAllowed(p.grant, origin, p.tab.topOrigin())) {
+      try {
+        this.d.grants.addFrameOrigin(p.clientId, p.tab.id, origin);
+      } catch {
+        /* grant disappeared mid-check */
+      }
+    }
+    return this.d.grants.frameAllowed(p.grant, origin, p.tab.topOrigin());
   }
 
   private async approve(ctx: ToolContext, tool: ToolName, kind: ApprovalKind, summary: string, tabId?: string, details?: Record<string, string>) {
+    if (this.d.settings().actionApprovals === 'never') {
+      this.d.audit.record({ event: 'approval', tool, client: ctx.clientId, tab: tabId, decision: 'auto', reason: kind });
+      return { approved: true, reason: 'approved' as const, data: { share: this.shareAll() } };
+    }
     const decision = await this.d.approvals.request(
       { clientId: ctx.clientId, clientName: this.clientName(ctx.clientId), tool, kind, tabId, summary, details },
       this.d.approvalTimeoutMs,
@@ -215,7 +264,7 @@ export class ToolService {
   /** Approval needed for an effectful action: always for sensitive kinds, for everything in "all" mode. */
   private async maybeApprove(ctx: ToolContext, tool: ToolName, kind: ApprovalKind | undefined, summary: string, tabId: string): Promise<void> {
     if (kind) await this.approve(ctx, tool, kind, summary, tabId);
-    else if (this.d.approvalMode === 'all') await this.approve(ctx, tool, 'action', summary, tabId);
+    else if (this.d.settings().actionApprovals === 'all') await this.approve(ctx, tool, 'action', summary, tabId);
   }
 
   private async checkUrl(raw: unknown): Promise<{ url: URL; origin: string }> {
@@ -266,7 +315,9 @@ export class ToolService {
         if (frame && frame !== tab.page.mainFrame()) return await r.continue().catch(() => undefined);
         if (!this.d.grants.originAllowed(p.grant, verdict.origin)) {
           try {
-            await this.approve(ctx, tool, 'navigate_new_origin', `Let the agent's action navigate ${tab.id} to a new site: ${verdict.origin}`, tab.id, { origin: verdict.origin });
+            if (!this.shareAll()) {
+              await this.approve(ctx, tool, 'navigate_new_origin', `Let the agent's action navigate ${tab.id} to a new site: ${verdict.origin}`, tab.id, { origin: verdict.origin });
+            }
             this.d.grants.addOrigin(p.clientId, tab.id, verdict.origin);
           } catch {
             events.hints.push('The page tried to navigate to a site that is not shared; the owner did not approve, so the navigation was blocked.');
@@ -422,7 +473,10 @@ export class ToolService {
       reason,
       ...(requestedTab ? { requestedTabId: requestedTab } : {}),
     });
-    const tabId = typeof decision.data?.tabId === 'string' ? decision.data.tabId : undefined;
+    this.ensureAllShared(ctx.clientId);
+    const tabId =
+      (typeof decision.data?.tabId === 'string' ? decision.data.tabId : undefined) ??
+      (this.shareAll() ? (requestedTab ?? this.d.grants.selected(ctx.clientId) ?? this.d.grants.tabsFor(ctx.clientId)[0]?.tabId) : undefined);
     const tab = tabId ? this.d.browser.tab(tabId) : undefined;
     const grant = tabId ? this.d.grants.get(ctx.clientId, tabId) : undefined;
     if (!tab || !grant) throw new ToolError('approval_denied', 'The owner did not share a tab.');
@@ -433,6 +487,7 @@ export class ToolService {
   }
 
   private async listTabs(ctx: ToolContext): Promise<ToolResult> {
+    this.ensureAllShared(ctx.clientId);
     const selected = this.d.grants.selected(ctx.clientId);
     const lines: string[] = [];
     for (const grant of this.d.grants.tabsFor(ctx.clientId)) {
@@ -492,7 +547,9 @@ export class ToolService {
     if (action === 'goto') {
       const { url, origin } = await this.checkUrl(a.url);
       if (!this.d.grants.originAllowed(p.grant, origin)) {
-        await this.approve(ctx, 'navigatePage', 'navigate_new_origin', `Navigate ${p.tab.id} to a new site: ${displayUrl(url.href)}`, p.tab.id, { origin });
+        if (!this.shareAll()) {
+          await this.approve(ctx, 'navigatePage', 'navigate_new_origin', `Navigate ${p.tab.id} to a new site: ${displayUrl(url.href)}`, p.tab.id, { origin });
+        }
         this.d.grants.addOrigin(ctx.clientId, p.tab.id, origin);
       } else {
         await this.maybeApprove(ctx, 'navigatePage', undefined, `Navigate ${p.tab.id} to ${displayUrl(url.href)}`, p.tab.id);

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { normalizePublicUrl } from './auth/publicUrl.js';
 import { isToolName, TOOL_NAMES, type ToolName } from './policy/scopes.js';
 
-export type ApprovalMode = 'sensitive' | 'all';
+export type ApprovalMode = 'never' | 'sensitive' | 'all';
 
 export interface ResolvedConfig {
   port: number;
@@ -12,7 +12,8 @@ export interface ResolvedConfig {
   toolCeiling: ToolName[];
   allowDomains: string[];
   denyDomains: string[];
-  approve: ApprovalMode;
+  /** Explicit --approve/--config value; when unset, the persisted owner setting applies. */
+  approve?: ApprovalMode;
   approvalTimeoutSeconds: number;
   openPanel: boolean;
 }
@@ -133,7 +134,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       if (!Number.isInteger(n) || n < 10 || n > 300) throw new ConfigError(`${flag} must be between 10 and 300 seconds.`);
       cli[key] = n;
     } else if (key === 'approve') {
-      if (value !== 'sensitive' && value !== 'all') throw new ConfigError('--approve must be "sensitive" or "all".');
+      if (value !== 'never' && value !== 'sensitive' && value !== 'all') throw new ConfigError('--approve must be "never", "sensitive" or "all".');
       cli[key] = value;
     } else cli[key] = value;
   }
@@ -160,7 +161,7 @@ export function resolveConfig(file: FileConfig, cli: FileConfig): ResolvedConfig
     toolCeiling: merged.tools === undefined ? [...TOOL_NAMES] : parseTools(merged.tools),
     allowDomains: merged.allowDomains ? parseList(merged.allowDomains).map(parseDomain) : [],
     denyDomains: merged.denyDomains ? parseList(merged.denyDomains).map(parseDomain) : [],
-    approve: merged.approve ?? 'sensitive',
+    ...(merged.approve !== undefined ? { approve: merged.approve } : {}),
     approvalTimeoutSeconds: merged.approvalTimeoutSeconds ?? 60,
     openPanel: merged.openPanel ?? true,
   };
@@ -180,7 +181,7 @@ Options:
   --tools <list|all>         maximum tools the panel may enable (default all; none enabled until you choose)
   --allow-domains <list>     only allow granting/navigating these domains (and subdomains)
   --deny-domains <list>      never allow these domains (deny wins)
-  --approve sensitive|all    which agent actions need your approval (default sensitive)
+  --approve never|sensitive|all  which agent actions need your approval (overrides the saved setting; default never)
   --approval-timeout <sec>   seconds before an unanswered approval is denied (default 60)
   --config <path>            JSON file with the same settings (flags override it)
   --no-open                  do not open the control panel in your default browser

@@ -9,13 +9,14 @@ import type { ResolvedConfig } from '../config.js';
 import type { ApprovalQueue } from '../policy/approvals.js';
 import type { GrantStore } from '../policy/grants.js';
 import { PRESETS, SCOPES, TOOL_SCOPES } from '../policy/scopes.js';
-import type { StoredDevice } from '../store.js';
+import type { StateStore, StoredDevice } from '../store.js';
 import { HttpError, hostHeader, readJson, send, sendJson } from '../util/http.js';
 import { LoginError, OwnerAuth } from './ownerAuth.js';
 
 export interface AdminDeps {
   config: ResolvedConfig;
   version: string;
+  store: StateStore;
   auth: AuthorizationServer;
   grants: GrantStore;
   approvals: ApprovalQueue;
@@ -218,6 +219,24 @@ export class AdminServer {
       case '/api/kill':
         this.d.killAll();
         return { ok: true };
+      case '/api/settings': {
+        const st = this.d.store.state.settings;
+        if (b.autoApproveClients !== undefined) {
+          if (typeof b.autoApproveClients !== 'boolean') throw new HttpError(400, 'autoApproveClients must be a boolean');
+          st.autoApproveClients = b.autoApproveClients;
+        }
+        if (b.shareEntireBrowser !== undefined) {
+          if (typeof b.shareEntireBrowser !== 'boolean') throw new HttpError(400, 'shareEntireBrowser must be a boolean');
+          st.shareEntireBrowser = b.shareEntireBrowser;
+        }
+        if (b.actionApprovals !== undefined) {
+          if (b.actionApprovals !== 'never' && b.actionApprovals !== 'sensitive' && b.actionApprovals !== 'all') throw new HttpError(400, 'actionApprovals must be never, sensitive or all');
+          st.actionApprovals = b.actionApprovals;
+        }
+        this.d.store.save();
+        this.d.audit.record({ event: 'settings_changed', decision: `${st.autoApproveClients ? 'auto' : 'manual'}_clients,${st.shareEntireBrowser ? 'all_tabs' : 'per_tab'},approvals_${st.actionApprovals}` });
+        return { ok: true, settings: { ...st } };
+      }
     }
     throw new HttpError(404, 'Unknown action');
   }
@@ -232,7 +251,7 @@ export class AdminServer {
       localMcpUrl: `http://127.0.0.1:${config.port}/mcp`,
       mcpPort: config.port,
       adminPort: config.adminPort,
-      approvalMode: config.approve,
+      settings: { ...this.d.store.state.settings },
       approvalTimeoutSeconds: config.approvalTimeoutSeconds,
       toolCeiling: config.toolCeiling,
       allowDomains: config.allowDomains,

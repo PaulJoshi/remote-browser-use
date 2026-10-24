@@ -8,6 +8,7 @@ export interface ClientMetadataDocument {
   client_name?: string;
   redirect_uris: string[];
   token_endpoint_auth_method: 'none' | 'private_key_jwt';
+  token_endpoint_auth_methods_supported?: string[];
   token_endpoint_auth_signing_alg?: string;
   jwks_uri?: string;
   jwks?: { keys?: unknown[] };
@@ -129,6 +130,10 @@ export function validateClientMetadata(clientId: string, doc: unknown): ClientMe
     if (typeof alg === 'string') out.token_endpoint_auth_signing_alg = alg;
     if (hasInlineJwks) out.jwks = jwks;
     if (jwksUri) out.jwks_uri = jwksUri;
+  }
+  const supported = d.token_endpoint_auth_methods_supported;
+  if (Array.isArray(supported) && supported.every((m) => typeof m === 'string')) {
+    out.token_endpoint_auth_methods_supported = supported as string[];
   }
   return out;
 }

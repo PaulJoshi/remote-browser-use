@@ -56,11 +56,29 @@ export interface StoredClient {
   jwksUri?: string;
   jwks?: { keys?: unknown[] };
   tokenEndpointAuthSigningAlg?: string;
+  /** Auth methods the client's own metadata says it can use (CIMD only). */
+  tokenEndpointAuthMethodsSupported?: string[];
   createdAt: number;
   approved: boolean;
+  /** Manually revoked by the owner; auto-approval must not resurrect it. */
+  blocked?: boolean;
   scopes: string[];
   tools: string[];
   lastUsed?: number;
+}
+
+/** Owner-tunable runtime settings, editable in the control panel's advanced section. */
+export interface OwnerSettings {
+  /** Approve new OAuth clients immediately with all requested scopes and tools (no owner step). */
+  autoApproveClients: boolean;
+  /** Give every approved client access to all tabs, origins, and frames (no per-tab grants). */
+  shareEntireBrowser: boolean;
+  /** Which agent actions require an owner approval prompt. */
+  actionApprovals: 'never' | 'sensitive' | 'all';
+}
+
+export function defaultSettings(): OwnerSettings {
+  return { autoApproveClients: true, shareEntireBrowser: true, actionApprovals: 'never' };
 }
 
 export interface StoredRefreshToken {
@@ -76,6 +94,7 @@ export interface PersistedState {
   version: 1;
   serverSecret: string;
   publicUrl?: string;
+  settings: OwnerSettings;
   ownerDevices: StoredDevice[];
   oauth: {
     /** Issuer the registrations and refresh tokens below belong to. */
@@ -86,7 +105,7 @@ export interface PersistedState {
 }
 
 function freshState(): PersistedState {
-  return { version: 1, serverSecret: randomToken(32), ownerDevices: [], oauth: { clients: [], refreshTokens: [] } };
+  return { version: 1, serverSecret: randomToken(32), settings: defaultSettings(), ownerDevices: [], oauth: { clients: [], refreshTokens: [] } };
 }
 
 /** Owner-only JSON state file with atomic writes. */
@@ -97,7 +116,7 @@ export class StateStore {
     if (existsSync(file)) {
       const parsed = JSON.parse(readFileSync(file, 'utf8')) as PersistedState;
       if (parsed.version !== 1) throw new Error(`Unsupported state file version in ${file}`);
-      this.state = { ...freshState(), ...parsed, oauth: { ...freshState().oauth, ...parsed.oauth } };
+      this.state = { ...freshState(), ...parsed, settings: { ...freshState().settings, ...parsed.settings }, oauth: { ...freshState().oauth, ...parsed.oauth } };
     } else {
       this.state = freshState();
       this.save();

@@ -9,7 +9,8 @@ import { TOOL_NAMES } from '../../src/policy/scopes.js';
 describe('CLI arguments and configuration', () => {
   it('uses safe defaults: loopback ports 8931/8932, no public URL, sensitive approvals, full ceiling but nothing enabled', () => {
     const c = resolveConfig({}, parseArgs([]).cli);
-    expect(c).toMatchObject({ port: 8931, adminPort: 8932, approve: 'sensitive', approvalTimeoutSeconds: 60, openPanel: true, allowDomains: [], denyDomains: [] });
+    expect(c).toMatchObject({ port: 8931, adminPort: 8932, approvalTimeoutSeconds: 60, openPanel: true, allowDomains: [], denyDomains: [] });
+    expect(c.approve).toBeUndefined(); // unset → persisted owner setting (default 'never') applies
     expect(c.publicUrl).toBeUndefined();
     expect(c.toolCeiling).toEqual(TOOL_NAMES);
   });
@@ -39,7 +40,7 @@ describe('CLI arguments and configuration', () => {
       expect(() => parseArgs([flag, 'x']), flag).toThrow(ConfigError);
     }
     expect(() => parseArgs(['--port'])).toThrow(/requires a value/);
-    expect(() => parseArgs(['--approve', 'none'])).toThrow(ConfigError);
+    expect(() => parseArgs(['--approve', 'bogus'])).toThrow(ConfigError);
     expect(() => parseArgs(['--port', '80'])).toThrow(ConfigError);
     expect(() => parseArgs(['--approval-timeout', '5'])).toThrow(ConfigError);
     expect(() => resolveConfig({}, { port: 9000, adminPort: 9000 })).toThrow(/different/);

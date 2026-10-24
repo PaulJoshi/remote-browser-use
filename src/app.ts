@@ -76,6 +76,7 @@ export class App {
     ensurePrivateDir(paths.profile);
     const store = new StateStore(paths.state);
     if (config.publicUrl) store.state.publicUrl = config.publicUrl;
+    if (config.approve !== undefined) store.state.settings.actionApprovals = config.approve;
     store.save();
     const audit = new AuditLog(paths.audit);
     const clock = opts.clock ?? systemClock;
@@ -86,6 +87,7 @@ export class App {
       audit,
       clock,
       fetchClientMetadata: opts.fetchClientMetadata ?? fetchClientMetadata,
+      settings: () => store.state.settings,
       toolCeiling: config.toolCeiling,
       accessTokenTtlSeconds: opts.accessTokenTtlSeconds,
     });
@@ -143,7 +145,7 @@ export class App {
       auth,
       audit,
       urlOpts,
-      approvalMode: config.approve,
+      settings: () => store.state.settings,
       approvalTimeoutMs: config.approvalTimeoutSeconds * 1000,
       downloadsDir: opts.downloadsDir ?? join(homedir(), 'Downloads'),
       lookup: opts.lookup,
@@ -153,6 +155,7 @@ export class App {
     const admin = new AdminServer({
       config,
       version: VERSION,
+      store,
       auth,
       grants,
       approvals,

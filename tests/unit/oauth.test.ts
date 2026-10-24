@@ -278,6 +278,60 @@ describe('dynamic client registration and client ID metadata documents', () => {
     });
     expect(replayed.status).toBe(401);
   });
+
+  it('lets a private_key_jwt CIMD client act as a PKCE-only public client when its metadata allows "none"', async () => {
+    const cid = 'https://chat.example/oauth/client.json';
+    const redirect = 'https://chat.example/connector/oauth/cb';
+    env.cimdDocs.set(cid, {
+      client_id: cid,
+      client_name: 'Chat Example',
+      redirect_uris: [redirect],
+      token_endpoint_auth_method: 'private_key_jwt',
+      token_endpoint_auth_methods_supported: ['none', 'private_key_jwt'],
+      token_endpoint_auth_signing_alg: 'RS256',
+      jwks_uri: 'https://chat.example/oauth/jwks.json',
+    });
+    const { code, verifier } = await obtainCode(env, { clientId: cid, redirectUri: redirect });
+    const ok = await token(env, { grant_type: 'authorization_code', code, redirect_uri: redirect, client_id: cid, code_verifier: verifier });
+    expect(ok.status).toBe(200);
+
+    const strict = 'https://strict.example/oauth/client.json';
+    env.cimdDocs.set(strict, {
+      client_id: strict,
+      redirect_uris: [redirect],
+      token_endpoint_auth_method: 'private_key_jwt',
+      token_endpoint_auth_signing_alg: 'RS256',
+      jwks_uri: 'https://strict.example/jwks.json',
+    });
+    const second = await obtainCode(env, { clientId: strict, redirectUri: redirect });
+    const denied = await token(env, { grant_type: 'authorization_code', code: second.code, redirect_uri: redirect, client_id: strict, code_verifier: second.verifier });
+    expect(denied.status).toBe(401);
+  });
+
+  it('auto-approves authorizations when autoApproveClients is on, granting all scopes', async () => {
+    env.store.state.settings.autoApproveClients = true;
+    const reg = await register(env);
+    const clientId = reg.json.client_id as string;
+    const { url } = authorizeUrl(env, { clientId });
+    const res = await fetch(url, { redirect: 'manual' });
+    expect(res.status).toBe(302);
+    const loc = new URL(res.headers.get('location')!);
+    expect(loc.searchParams.get('code')).toMatch(/^rbu_ac_/);
+    const client = env.auth.clients().find((c) => c.clientId === clientId)!;
+    expect(client.approved).toBe(true);
+    expect(client.scopes).toEqual(['browser:read', 'browser:navigate', 'browser:interact', 'browser:manage']);
+  });
+
+  it('does not auto-approve a client the owner blocked', async () => {
+    env.store.state.settings.autoApproveClients = true;
+    const reg = await register(env);
+    const clientId = reg.json.client_id as string;
+    env.auth.revokeClient(clientId);
+    const res = await fetch(authorizeUrl(env, { clientId }).url, { redirect: 'manual' });
+    expect(res.status).toBe(200); // falls back to the manual waiting page
+    const client = env.auth.clients().find((c) => c.clientId === clientId)!;
+    expect(client.approved).toBe(false);
+  });
 });
 
 describe('token lifecycle', () => {
