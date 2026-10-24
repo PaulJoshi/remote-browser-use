@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Northwind Security Basics — Home</title><link rel="stylesheet" href="/style.css"><script src="/nw.js"></script></head>
+<body>
+<header><strong>Northwind Security Basics</strong><span>Fictional training for testing — no real company, no login.</span></header>
+<main>
+  <div class="card">
+    <h1>Security awareness course 2026</h1>
+    <p>Complete three short slides, a knowledge check, a spot-the-phish inbox exercise and an interactive module. Then generate your certificate.</p>
+    <h2>Your progress</h2>
+    <ul id="progress"></ul>
+    <p><a href="/slide-1.html" id="start">Start course</a></p>
+    <nav aria-label="Course sections">
+      <a href="/quiz.html">Quiz</a> · <a href="/inbox.html">Inbox exercise</a> · <a href="/module.html">Interactive module</a> · <a href="/certificate.html">Certificate</a>
+    </nav>
+  </div>
+</main>
+<script>
+  const p = NW.load();
+  const missing = NW.missing(p);
+  const ul = document.getElementById('progress');
+  for (const item of ['Slide 1', 'Slide 2', 'Slide 3', 'Knowledge check quiz', 'Spot-the-phish inbox', 'Interactive module (course player)']) {
+    const li = document.createElement('li');
+    li.textContent = `${item}: ${missing.includes(item) ? 'not done' : 'done'}`;
+    ul.append(li);
+  }
+</script>
+</body>
+</html>

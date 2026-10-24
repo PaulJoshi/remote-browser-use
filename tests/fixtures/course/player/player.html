@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Northwind course player</title>
+<style>
+  body { margin: 0; font: 16px/1.5 system-ui, sans-serif; background: #00a86b; color: #fff; padding: 1rem 1.25rem; min-height: 100vh; box-sizing: border-box; }
+  button { font: inherit; padding: .4rem .9rem; border-radius: .4rem; border: 0; background: #fff; color: #065f46; cursor: pointer; }
+  .panel { background: rgba(0,0,0,.15); border-radius: .5rem; padding: 1rem; margin-top: .75rem; }
+</style></head>
+<body>
+  <h2>Course player · Module 4</h2>
+  <p id="state">Ready to launch.</p>
+  <button id="launch">Launch module</button>
+  <div id="lesson" class="panel" hidden>
+    <h3>Lesson: check links before you click</h3>
+    <p>Hover over a link to see where it really goes. Look for misspelled domains and shortened URLs.</p>
+    <fieldset>
+      <legend>Which link is safe to open?</legend>
+      <label><input type="radio" name="link" value="a"> https://northwind.example/benefits</label><br>
+      <label><input type="radio" name="link" value="b"> http://northwind-benefits.example.co/login</label><br>
+      <label><input type="radio" name="link" value="c"> https://bit.example/3xYz</label>
+    </fieldset>
+    <p><button id="check">Check answer</button></p>
+    <p id="feedback" aria-live="polite"></p>
+    <p><button id="complete" hidden>Complete module</button></p>
+  </div>
+<script>
+  document.getElementById('launch').addEventListener('click', () => {
+    document.getElementById('lesson').hidden = false;
+    document.getElementById('state').textContent = 'Module in progress.';
+  });
+  document.getElementById('check').addEventListener('click', () => {
+    const v = document.querySelector('input[name=link]:checked')?.value;
+    const fb = document.getElementById('feedback');
+    if (v === 'a') {
+      fb.textContent = 'Correct: that link uses the real company domain over HTTPS.';
+      document.getElementById('complete').hidden = false;
+    } else {
+      fb.textContent = 'Not quite. Look carefully at the domain names.';
+    }
+  });
+  document.getElementById('complete').addEventListener('click', () => {
+    if (!confirm('Mark this module complete and report your result to the course?')) {
+      document.getElementById('state').textContent = 'Completion cancelled.';
+      return;
+    }
+    parent.postMessage({ type: 'nw-scorm', status: 'completed', score: 100 }, '{{COURSE_ORIGIN}}');
+    document.getElementById('state').textContent = 'Result reported to the course (LMS).';
+  });
+</script>
+</body>
+</html>

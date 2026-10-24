@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Slide 1 of 3 — Why phishing works</title><link rel="stylesheet" href="/style.css"><script src="/nw.js"></script></head>
+<body>
+<header><a href="/">Course home</a><span>Slide 1 of 3</span></header>
+<main>
+  <div class="card">
+    <h1>Why phishing works</h1>
+    <p>Phishing messages imitate people and services you trust. They create urgency so you act before you think, and they ask you to click a link, open an attachment, or share a password.</p>
+    <p>Most successful attacks need just one person to act quickly. Slowing down is your best defense.</p>
+    <label><input type="checkbox" id="read"> I have read this slide</label>
+    <p><button class="primary" id="next" disabled>Next slide</button></p>
+  </div>
+</main>
+<script>
+  const read = document.getElementById('read');
+  const next = document.getElementById('next');
+  read.addEventListener('change', () => (next.disabled = !read.checked));
+  next.addEventListener('click', () => {
+    NW.update((p) => { if (!p.slides.includes(1)) p.slides.push(1); });
+    location.href = '/slide-2.html';
+  });
+</script>
+</body>
+</html>

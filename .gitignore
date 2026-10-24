@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist-check/
+.tmp/
+coverage/
+*.tgz
+.env
+.env.*
+*.log
+.DS_Store
+.devin/config.local.json

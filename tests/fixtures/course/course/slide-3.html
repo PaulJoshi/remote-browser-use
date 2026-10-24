@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Slide 3 of 3 — Reporting</title><link rel="stylesheet" href="/style.css"><script src="/nw.js"></script></head>
+<body>
+<header><a href="/">Course home</a><span>Slide 3 of 3</span></header>
+<main>
+  <div class="card">
+    <h1>Report, don't delete</h1>
+    <p>If a message looks suspicious, use the <strong>Report phishing</strong> option. Reporting helps the security team protect everyone. Never reply to the sender or forward the message to colleagues.</p>
+    <p><button id="ack" aria-pressed="false">I understand how to report</button></p>
+    <p><button class="primary" id="next" disabled>Go to the knowledge check</button></p>
+  </div>
+</main>
+<script>
+  const ack = document.getElementById('ack');
+  ack.addEventListener('click', () => {
+    const on = ack.getAttribute('aria-pressed') !== 'true';
+    ack.setAttribute('aria-pressed', String(on));
+    document.getElementById('next').disabled = !on;
+  });
+  document.getElementById('next').addEventListener('click', () => {
+    NW.update((p) => { if (!p.slides.includes(3)) p.slides.push(3); });
+    location.href = '/quiz.html';
+  });
+</script>
+</body>
+</html>

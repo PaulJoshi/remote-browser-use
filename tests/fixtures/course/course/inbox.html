@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Spot the phish — inbox exercise</title><link rel="stylesheet" href="/style.css"><script src="/nw.js"></script></head>
+<body>
+<header><a href="/">Course home</a><span>Inbox exercise</span></header>
+<main>
+  <div class="card">
+    <h1>Spot the phish</h1>
+    <p>Open each message. Drag every phishing message into the <strong>Report phishing</strong> bin, and mark every legitimate message as safe. Then check your answers.</p>
+    <div id="messages" role="list" aria-label="Inbox"></div>
+    <h2>Reading pane</h2>
+    <div id="reader" class="card" aria-live="polite">Open a message to read it.</div>
+    <div id="bin" class="bin" role="region" aria-label="Report phishing bin"><strong>Report phishing bin</strong> — drop suspicious messages here.<ul id="reported"></ul></div>
+    <p><button class="primary" id="check" type="button">Check my answers</button></p>
+    <p id="result" aria-live="polite"></p>
+  </div>
+</main>
+<script>
+  const emails = [
+    { id: 'm1', from: 'IT Helpdesk <it-support@northwnd-help.co>', subject: 'Password expires today — verify now', body: 'Your password expires in 1 hour. Click the link and enter your current password to keep access.', phish: true },
+    { id: 'm2', from: 'Payroll <payroll@northwind.example>', subject: 'Your October payslip is available', body: 'Your payslip is available in the HR portal you normally use. We will never ask for your password by email.', phish: false },
+    { id: 'm3', from: 'Dana Reyes (CEO) <dana.reyes.ceo@freemail.example>', subject: 'Urgent: buy gift cards for a client', body: 'I am in a meeting. Buy five gift cards right now and send me the codes. Do not tell anyone.', phish: true },
+    { id: 'm4', from: 'Facilities <facilities@northwind.example>', subject: 'Office closed Friday for maintenance', body: 'The office will be closed on Friday for scheduled electrical maintenance. Please work from home.', phish: false },
+  ];
+  const state = { reported: new Set(), safe: new Set() };
+  const list = document.getElementById('messages');
+  for (const m of emails) {
+    const card = document.createElement('div');
+    card.className = 'email';
+    card.id = m.id;
+    card.setAttribute('role', 'listitem');
+    card.setAttribute('aria-label', `Message from ${m.from}: ${m.subject}`);
+    const handle = document.createElement('div');
+    handle.className = 'handle';
+    handle.draggable = true;
+    handle.setAttribute('role', 'img');
+    handle.setAttribute('aria-label', `Drag handle for "${m.subject}"`);
+    handle.textContent = '⠿ drag';
+    handle.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', m.id));
+    const title = document.createElement('div');
+    title.textContent = `${m.from} — ${m.subject}`;
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.textContent = `Open "${m.subject}"`;
+    open.addEventListener('click', () => {
+      const r = document.getElementById('reader');
+      r.textContent = '';
+      const h = document.createElement('h3');
+      h.textContent = m.subject;
+      const f = document.createElement('p');
+      f.textContent = `From: ${m.from}`;
+      const b = document.createElement('p');
+      b.textContent = m.body;
+      r.append(h, f, b);
+    });
+    const safe = document.createElement('button');
+    safe.type = 'button';
+    safe.textContent = `Mark "${m.subject}" as safe`;
+    safe.setAttribute('aria-pressed', 'false');
+    safe.addEventListener('click', () => {
+      state.safe.add(m.id);
+      state.reported.delete(m.id);
+      safe.setAttribute('aria-pressed', 'true');
+      card.classList.remove('reported');
+      renderBin();
+    });
+    card.append(handle, title, open, safe);
+    list.append(card);
+  }
+  const bin = document.getElementById('bin');
+  bin.addEventListener('dragover', (e) => e.preventDefault());
+  bin.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const id = e.dataTransfer.getData('text/plain');
+    if (!emails.some((m) => m.id === id)) return;
+    state.reported.add(id);
+    state.safe.delete(id);
+    document.getElementById(id).classList.add('reported');
+    renderBin();
+  });
+  function renderBin() {
+    const ul = document.getElementById('reported');
+    ul.textContent = '';
+    for (const id of state.reported) {
+      const li = document.createElement('li');
+      li.textContent = `Reported: ${emails.find((m) => m.id === id).subject}`;
+      ul.append(li);
+    }
+  }
+  document.getElementById('check').addEventListener('click', () => {
+    const correct = emails.every((m) => (m.phish ? state.reported.has(m.id) : state.safe.has(m.id)));
+    const result = document.getElementById('result');
+    if (correct) {
+      NW.update((p) => (p.inbox = true));
+      result.className = 'ok';
+      result.textContent = 'All messages sorted correctly. Continue to the interactive module.';
+    } else {
+      const done = emails.filter((m) => (m.phish ? state.reported.has(m.id) : state.safe.has(m.id))).length;
+      result.className = 'bad';
+      result.textContent = `${done} of ${emails.length} messages sorted correctly. Keep going.`;
+    }
+  });
+</script>
+</body>
+</html>

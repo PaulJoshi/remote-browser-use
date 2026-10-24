@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Security test pages</title><link rel="stylesheet" href="/style.css"></head>
+<body>
+<header><a href="/">Course home</a><span>Test pages (used by automated security tests)</span></header>
+<main>
+  <form class="card" id="login">
+    <h2>Practice sign-in (never use real credentials)</h2>
+    <p><label>Username <input name="username" id="username"></label></p>
+    <p><label>Password <input type="password" name="password" id="password"></label></p>
+    <p><label>One-time code <input name="otp" id="otp" autocomplete="one-time-code" inputmode="numeric"></label></p>
+    <p><button type="submit">Sign in</button></p>
+    <p id="login-result"></p>
+  </form>
+  <div class="card">
+    <h2>Links and popups</h2>
+    <p><a href="/popup-target.html" target="_blank" id="popup-link">Open help in a new tab</a></p>
+    <p><button id="winopen" type="button">Open help with a script</button></p>
+    <p><a href="/redirect-to-player" id="redirect-link">Go to the player site via redirect</a></p>
+    <p><a href="/redirect-to-private" id="private-link">Redirect to a private network address</a></p>
+    <p><a href="/files/handbook.txt" download id="download-link">Download the handbook</a></p>
+    <p><button id="scripted-nav" type="button">Scripted navigation to the player site</button></p>
+  </div>
+  <div class="card">
+    <h2>Dialogs</h2>
+    <p><button id="alert" type="button">Show alert</button> <button id="prompt" type="button">Ask my name</button></p>
+    <p id="greeting"></p>
+  </div>
+  <div class="card">
+    <h2>Embedded player</h2>
+    <iframe title="Embedded player" src="{{PLAYER_ORIGIN}}/landing.html" style="width:320px;height:200px;border:0"></iframe>
+  </div>
+</main>
+<script>
+  document.getElementById('login').addEventListener('submit', (e) => {
+    e.preventDefault();
+    document.getElementById('login-result').textContent = 'Signed in (simulated).';
+  });
+  document.getElementById('winopen').addEventListener('click', () => window.open('/popup-target.html'));
+  document.getElementById('scripted-nav').addEventListener('click', () => setTimeout(() => (location.href = '{{PLAYER_ORIGIN}}/landing.html'), 50));
+  document.getElementById('alert').addEventListener('click', () => alert('Hello from the course'));
+  document.getElementById('prompt').addEventListener('click', () => {
+    const name = prompt('What is your name?');
+    document.getElementById('greeting').textContent = name ? `Hello, ${name}` : 'No name given';
+  });
+</script>
+</body>
+</html>

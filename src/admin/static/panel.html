@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>remote-browser-use control panel</title>
+<link rel="stylesheet" href="/panel.css">
+<script src="/panel.js" defer></script>
+</head>
+<body>
+<header>
+  <h1>remote-browser-use</h1>
+  <span id="version" class="muted"></span>
+  <span class="spacer"></span>
+  <button id="kill" class="danger" hidden>Stop all agent access</button>
+</header>
+<main id="app">
+  <section id="login" hidden>
+    <h2>Owner sign-in</h2>
+    <p>Enter the <strong>owner setup code</strong> printed in the terminal where <code>remote-browser-use</code> is running. This browser will stay signed in.</p>
+    <form id="login-form">
+      <input id="code" autocomplete="one-time-code" placeholder="XXXX-XXXX-XXXX" aria-label="Owner setup code" required>
+      <button type="submit">Sign in</button>
+    </form>
+    <p id="login-error" class="error" role="alert"></p>
+  </section>
+  <div id="main" hidden>
+    <p id="flash" class="flash" role="status" hidden></p>
+    <section id="setup"></section>
+    <section id="pending"></section>
+    <section id="tabs"></section>
+    <section id="clients"></section>
+    <section id="activity"></section>
+  </div>
+</main>
+</body>
+</html>

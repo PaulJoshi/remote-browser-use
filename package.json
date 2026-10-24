@@ -1,0 +1,75 @@
+{
+  "name": "remote-browser-use",
+  "version": "0.1.0",
+  "description": "Let an MCP-capable AI chat use selected tabs of a separate, persistent Chromium browser on your computer, behind OAuth and local approvals.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "remote-browser-use": "dist/cli/main.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "dist/admin/static/",
+    "dist/fixtures/course/",
+    "!dist/**/*.test.*",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "browser",
+    "playwright",
+    "chromium",
+    "oauth",
+    "chatgpt",
+    "claude"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --config vitest.config.ts",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "verify:pack": "node scripts/verify-pack.mjs",
+    "verify": "npm run lint && npm run typecheck && npm run build && npm test && npm run test:e2e && npm run verify:pack",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.3.1",
+    "playwright-core": "1.64.1",
+    "pngjs": "^7.0.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@modelcontextprotocol/client": "2.3.1",
+    "@types/node": "22.20.5",
+    "@types/pngjs": "6.0.5",
+    "eslint": "10.12.0",
+    "globals": "17.13.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.2",
+    "vitest": "5.0.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PaulJoshi/remote-browser-use.git"
+  },
+  "bugs": "https://github.com/PaulJoshi/remote-browser-use/issues",
+  "homepage": "https://github.com/PaulJoshi/remote-browser-use#readme"
+}

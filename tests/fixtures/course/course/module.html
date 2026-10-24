@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Interactive module</title><link rel="stylesheet" href="/style.css"><script src="/nw.js"></script></head>
+<body>
+<header><a href="/">Course home</a><span>Interactive module</span></header>
+<main>
+  <div class="card">
+    <h1>Interactive module: check links before you click</h1>
+    <p>This module runs in the course player, which is hosted separately (like a real LMS/SCORM player).</p>
+    <p id="module-status" aria-live="polite">Module status: not started</p>
+    <iframe class="player" title="Course player" src="{{PLAYER_ORIGIN}}/player.html"></iframe>
+  </div>
+</main>
+<script>
+  const status = document.getElementById('module-status');
+  if (NW.load().module) status.textContent = 'Module status: completed';
+  window.addEventListener('message', (e) => {
+    if (e.origin !== '{{PLAYER_ORIGIN}}' || !e.data || e.data.type !== 'nw-scorm') return;
+    if (e.data.status === 'completed') {
+      NW.update((p) => (p.module = true));
+      status.textContent = `Module status: completed (score ${Number(e.data.score) || 0})`;
+    }
+  });
+</script>
+</body>
+</html>

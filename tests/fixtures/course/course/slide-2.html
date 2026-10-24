@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Slide 2 of 3 — Red flags</title><link rel="stylesheet" href="/style.css"><script src="/nw.js"></script></head>
+<body>
+<header><a href="/">Course home</a><span>Slide 2 of 3</span></header>
+<main>
+  <div class="card">
+    <h1>Red flags</h1>
+    <p>Hover over each highlighted term to reveal what it means. The Next button unlocks when you have revealed both.</p>
+    <p><span class="term" id="term-spoofing" tabindex="0">Spoofing</span> <span class="definition" id="def-spoofing" hidden>Faking a sender name or address so a message looks like it came from someone you trust.</span></p>
+    <p><span class="term" id="term-pretexting" tabindex="0">Pretexting</span> <span class="definition" id="def-pretexting" hidden>Inventing a believable story (for example, an urgent request from an executive) to get you to act.</span></p>
+    <p id="status" aria-live="polite">Revealed 0 of 2 terms.</p>
+    <p><button class="primary" id="next" disabled>Next slide</button></p>
+  </div>
+</main>
+<script>
+  const seen = new Set();
+  for (const name of ['spoofing', 'pretexting']) {
+    const reveal = () => {
+      document.getElementById(`def-${name}`).hidden = false;
+      seen.add(name);
+      document.getElementById('status').textContent = `Revealed ${seen.size} of 2 terms.`;
+      document.getElementById('next').disabled = seen.size < 2;
+    };
+    const term = document.getElementById(`term-${name}`);
+    term.addEventListener('mouseenter', reveal);
+    term.addEventListener('focus', reveal);
+  }
+  document.getElementById('next').addEventListener('click', () => {
+    NW.update((p) => { if (!p.slides.includes(2)) p.slides.push(2); });
+    location.href = '/slide-3.html';
+  });
+</script>
+</body>
+</html>

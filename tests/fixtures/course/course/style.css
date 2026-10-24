@@ -1,0 +1,18 @@
+body { font: 16px/1.5 system-ui, sans-serif; margin: 0; color: #1f2937; background: #f8fafc; }
+header { background: #0f3d5e; color: #fff; padding: .75rem 1.5rem; display: flex; gap: 1rem; align-items: center; }
+header a { color: #cde7ff; }
+main { max-width: 48rem; margin: 1.5rem auto; padding: 0 1.25rem; }
+.card { background: #fff; border: 1px solid #e2e8f0; border-radius: .6rem; padding: 1.25rem; margin: 1rem 0; }
+button { font: inherit; padding: .45rem 1rem; border-radius: .4rem; border: 1px solid #94a3b8; background: #fff; cursor: pointer; }
+button.primary { background: #0f3d5e; color: #fff; border-color: #0f3d5e; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+.term { background: #fef3c7; border-bottom: 2px dotted #b45309; cursor: help; padding: 0 .2rem; }
+.definition { color: #065f46; font-style: italic; }
+.email { border: 1px solid #cbd5e1; border-radius: .4rem; padding: .6rem; margin: .5rem 0; background: #fff; }
+.handle { display: inline-block; cursor: grab; padding: .2rem .6rem; margin-right: .5rem; background: #e2e8f0; border-radius: .3rem; font-size: .85rem; }
+.email.reported { opacity: .5; }
+.bin { position: sticky; bottom: .5rem; border: 3px dashed #b91c1c; border-radius: .6rem; padding: 1rem; min-height: 5rem; background: #fef2f2; }
+.ok { color: #047857; font-weight: 600; }
+.bad { color: #b91c1c; font-weight: 600; }
+iframe.player { width: 100%; height: 30rem; border: 2px solid #0f3d5e; border-radius: .4rem; background: #fff; }
+.certificate { border: 6px double #0f3d5e; padding: 2rem; text-align: center; background: #fffdf5; }

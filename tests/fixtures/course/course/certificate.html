@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Certificate</title><link rel="stylesheet" href="/style.css"><script src="/nw.js"></script></head>
+<body>
+<header><a href="/">Course home</a><span>Certificate</span></header>
+<main>
+  <div class="card" id="incomplete" hidden>
+    <h1>Not finished yet</h1>
+    <p>Complete these sections first:</p>
+    <ul id="missing"></ul>
+  </div>
+  <form class="card" id="form" hidden>
+    <h1>Generate your certificate</h1>
+    <p><label>Full name for the certificate <input id="name" name="fullname" autocomplete="name" required></label></p>
+    <p><button type="submit" class="primary">Generate certificate</button></p>
+  </form>
+  <div class="certificate" id="certificate" hidden>
+    <h1>Certificate of Completion</h1>
+    <p>This certifies that</p>
+    <h2 id="cert-name"></h2>
+    <p>completed <strong>Northwind Security Basics 2026</strong> (simulated training — not a real credential).</p>
+    <p id="cert-id"></p>
+  </div>
+</main>
+<script>
+  const p = NW.load();
+  const missing = NW.missing(p);
+  if (missing.length) {
+    document.getElementById('incomplete').hidden = false;
+    for (const m of missing) {
+      const li = document.createElement('li');
+      li.textContent = m;
+      document.getElementById('missing').append(li);
+    }
+  } else {
+    document.getElementById('form').hidden = false;
+  }
+  document.getElementById('form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = document.getElementById('name').value.trim();
+    if (!name) return;
+    let h = 7;
+    for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 1000003;
+    document.getElementById('cert-name').textContent = name;
+    document.getElementById('cert-id').textContent = `Certificate ID: NW-2026-${String(h).padStart(7, '0')}`;
+    document.getElementById('form').hidden = true;
+    document.getElementById('certificate').hidden = false;
+  });
+</script>
+</body>
+</html>

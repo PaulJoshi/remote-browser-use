@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Knowledge check</title><link rel="stylesheet" href="/style.css"><script src="/nw.js"></script></head>
+<body>
+<header><a href="/">Course home</a><span>Knowledge check</span></header>
+<main>
+  <form class="card" id="quiz">
+    <h1>Knowledge check</h1>
+    <fieldset>
+      <legend>1. You receive an unexpected invoice attachment from an unknown sender. What should you do?</legend>
+      <label><input type="radio" name="q1" value="open"> Open it to check the amount</label><br>
+      <label><input type="radio" name="q1" value="forward"> Forward it to a colleague in finance</label><br>
+      <label><input type="radio" name="q1" value="report"> Report it with the Report phishing button</label><br>
+      <label><input type="radio" name="q1" value="reply"> Reply and ask the sender for details</label>
+    </fieldset>
+    <fieldset>
+      <legend>2. Which of these are red flags? (select all that apply)</legend>
+      <label><input type="checkbox" name="q2" value="urgent"> A demand to act within one hour</label><br>
+      <label><input type="checkbox" name="q2" value="domain"> The sender domain is northwind-traders.co instead of northwind.example</label><br>
+      <label><input type="checkbox" name="q2" value="password"> A request to confirm your password</label><br>
+      <label><input type="checkbox" name="q2" value="logo"> The company logo appears in the message</label><br>
+      <label><input type="checkbox" name="q2" value="hours"> It arrived during business hours</label>
+    </fieldset>
+    <p><button type="submit" class="primary">Submit answers</button></p>
+    <p id="result" aria-live="polite"></p>
+  </form>
+</main>
+<script>
+  document.getElementById('quiz').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const q1 = document.querySelector('input[name=q1]:checked')?.value;
+    const q2 = [...document.querySelectorAll('input[name=q2]:checked')].map((i) => i.value).sort().join(',');
+    let score = 0;
+    if (q1 === 'report') score++;
+    if (q2 === 'domain,password,urgent') score++;
+    const result = document.getElementById('result');
+    result.textContent = '';
+    if (score === 2) {
+      NW.update((p) => (p.quiz = true));
+      result.className = 'ok';
+      result.append('Passed: 2 of 2 correct. ');
+      const a = document.createElement('a');
+      a.href = '/inbox.html';
+      a.textContent = 'Continue to the inbox exercise';
+      result.append(a);
+    } else {
+      result.className = 'bad';
+      result.textContent = `Score ${score} of 2. Review your answers and try again.`;
+    }
+  });
+</script>
+</body>
+</html>
