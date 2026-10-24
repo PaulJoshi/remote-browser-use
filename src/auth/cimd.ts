@@ -7,7 +7,10 @@ export interface ClientMetadataDocument {
   client_id: string;
   client_name?: string;
   redirect_uris: string[];
-  token_endpoint_auth_method?: string;
+  token_endpoint_auth_method: 'none' | 'private_key_jwt';
+  token_endpoint_auth_signing_alg?: string;
+  jwks_uri?: string;
+  jwks?: { keys?: unknown[] };
   grant_types?: string[];
   response_types?: string[];
 }
@@ -38,15 +41,15 @@ const safeLookup: LookupFunction = (hostname, options, callback) => {
 };
 
 /**
- * Fetch a Client ID Metadata Document over HTTPS only, refusing private
- * destinations (checked on the resolved IP to resist DNS rebinding), redirects,
- * large bodies, and slow servers.
+ * Fetch a JSON document over HTTPS only, refusing private destinations
+ * (checked on the resolved IP to resist DNS rebinding), redirects, large
+ * bodies, and slow servers. Used for Client ID Metadata Documents and JWKS.
  */
-export const fetchClientMetadata: CimdFetcher = (clientIdUrl) =>
-  new Promise((resolve, reject) => {
-    const url = new URL(clientIdUrl);
+export function fetchJsonHttps(rawUrl: string, maxBytes = MAX_BYTES, label = 'document'): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const url = new URL(rawUrl);
     if (url.protocol !== 'https:' || isRestrictedHostname(url.hostname)) {
-      reject(new Error('client metadata URL must be a public https URL'));
+      reject(new Error(`${label} URL must be a public https URL`));
       return;
     }
     const req = request(
@@ -55,15 +58,15 @@ export const fetchClientMetadata: CimdFetcher = (clientIdUrl) =>
       (res) => {
         if (res.statusCode !== 200) {
           res.resume();
-          reject(new Error(`client metadata fetch returned HTTP ${res.statusCode}`));
+          reject(new Error(`${label} fetch returned HTTP ${res.statusCode}`));
           return;
         }
         let size = 0;
         const chunks: Buffer[] = [];
         res.on('data', (chunk: Buffer) => {
           size += chunk.length;
-          if (size > MAX_BYTES) {
-            req.destroy(new Error('client metadata document too large'));
+          if (size > maxBytes) {
+            req.destroy(new Error(`${label} too large`));
             return;
           }
           chunks.push(chunk);
@@ -72,16 +75,20 @@ export const fetchClientMetadata: CimdFetcher = (clientIdUrl) =>
           try {
             resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
           } catch {
-            reject(new Error('client metadata document is not JSON'));
+            reject(new Error(`${label} is not JSON`));
           }
         });
         res.on('error', reject);
       },
     );
-    req.on('timeout', () => req.destroy(new Error('client metadata fetch timed out')));
+    req.on('timeout', () => req.destroy(new Error(`${label} fetch timed out`)));
     req.on('error', reject);
     req.end();
   });
+}
+
+export const fetchClientMetadata: CimdFetcher = (clientIdUrl) =>
+  fetchJsonHttps(clientIdUrl, MAX_BYTES, 'client metadata document');
 
 export function validateClientMetadata(clientId: string, doc: unknown): ClientMetadataDocument {
   if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('client metadata must be a JSON object');
@@ -91,16 +98,37 @@ export function validateClientMetadata(clientId: string, doc: unknown): ClientMe
     throw new Error('client metadata must list redirect_uris');
   }
   const method = d.token_endpoint_auth_method;
-  if (method !== undefined && method !== 'none') {
-    throw new Error(`client metadata token_endpoint_auth_method "${String(method)}" is not supported (only "none")`);
+  if (method !== undefined && method !== 'none' && method !== 'private_key_jwt') {
+    throw new Error(`client metadata token_endpoint_auth_method "${String(method)}" is not supported (only "none" and "private_key_jwt")`);
   }
   for (const key of ['client_secret', 'client_secret_expires_at'] as const) {
     if (key in d) throw new Error('client metadata documents must not contain client secrets');
   }
-  return {
+  const out: ClientMetadataDocument = {
     client_id: clientId,
     client_name: typeof d.client_name === 'string' ? d.client_name : undefined,
     redirect_uris: d.redirect_uris as string[],
-    token_endpoint_auth_method: 'none',
+    token_endpoint_auth_method: method ?? 'none',
   };
+  if (out.token_endpoint_auth_method === 'private_key_jwt') {
+    const alg = d.token_endpoint_auth_signing_alg;
+    if (alg !== undefined && (typeof alg !== 'string' || !['RS256', 'ES256'].includes(alg))) {
+      throw new Error(`client metadata token_endpoint_auth_signing_alg "${String(alg)}" is not supported`);
+    }
+    const jwks = d.jwks as { keys?: unknown[] } | undefined;
+    const hasInlineJwks = jwks !== undefined && typeof jwks === 'object' && jwks !== null && Array.isArray(jwks.keys);
+    let jwksUri: string | undefined;
+    if (typeof d.jwks_uri === 'string') {
+      const u = new URL(d.jwks_uri);
+      if (u.protocol !== 'https:' || isRestrictedHostname(u.hostname)) {
+        throw new Error('client metadata jwks_uri must be a public https URL');
+      }
+      jwksUri = d.jwks_uri;
+    }
+    if (!hasInlineJwks && !jwksUri) throw new Error('private_key_jwt clients must publish jwks or jwks_uri');
+    if (typeof alg === 'string') out.token_endpoint_auth_signing_alg = alg;
+    if (hasInlineJwks) out.jwks = jwks;
+    if (jwksUri) out.jwks_uri = jwksUri;
+  }
+  return out;
 }

@@ -51,8 +51,11 @@ export interface StoredClient {
   kind: 'dcr' | 'cimd';
   name: string;
   redirectUris: string[];
-  tokenEndpointAuthMethod: 'none' | 'client_secret_post' | 'client_secret_basic';
+  tokenEndpointAuthMethod: 'none' | 'client_secret_post' | 'client_secret_basic' | 'private_key_jwt';
   secretHash?: string;
+  jwksUri?: string;
+  jwks?: { keys?: unknown[] };
+  tokenEndpointAuthSigningAlg?: string;
   createdAt: number;
   approved: boolean;
   scopes: string[];

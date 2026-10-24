@@ -8,7 +8,8 @@ import { humanCode, pkceChallenge, randomToken, safeEqual, sha256 } from '../uti
 import { HttpError, readForm, readJson, send, sendHtml, sendJson } from '../util/http.js';
 import { RateLimiter } from '../util/rateLimit.js';
 import { escapeHtml, sanitizeText } from '../util/sanitize.js';
-import { type CimdFetcher, isCimdClientId, validateClientMetadata } from './cimd.js';
+import { type CimdFetcher, fetchJsonHttps, isCimdClientId, validateClientMetadata } from './cimd.js';
+import { verifyClientAssertion } from './privateKeyJwt.js';
 import { type Identity, identityFor } from './publicUrl.js';
 
 export interface AuthInfo {
@@ -91,6 +92,7 @@ export interface AuthServerOptions {
   audit: AuditLog;
   clock: Clock;
   fetchClientMetadata: CimdFetcher;
+  fetchJwks?: CimdFetcher;
   toolCeiling: readonly ToolName[];
   accessTokenTtlSeconds?: number;
   refreshTokenTtlSeconds?: number;
@@ -174,6 +176,9 @@ export class AuthorizationServer extends EventEmitter {
   private readonly refreshTtl: number;
   private readonly pendingTtl: number;
   private readonly sweeper: NodeJS.Timeout;
+  /** Replay cache for private_key_jwt client assertions: `${clientId}:${jti}` → expiry ms. */
+  private readonly usedAssertions = new Map<string, number>();
+  private readonly jwksCache = new Map<string, { keys?: unknown[]; expiresAt: number }>();
 
   constructor(private readonly opts: AuthServerOptions) {
     super();
@@ -249,8 +254,9 @@ export class AuthorizationServer extends EventEmitter {
       response_modes_supported: ['query'],
       grant_types_supported: ['authorization_code', 'refresh_token'],
       code_challenge_methods_supported: ['S256'],
-      token_endpoint_auth_methods_supported: ['none', 'client_secret_post', 'client_secret_basic'],
-      revocation_endpoint_auth_methods_supported: ['none', 'client_secret_post', 'client_secret_basic'],
+      token_endpoint_auth_methods_supported: ['none', 'client_secret_post', 'client_secret_basic', 'private_key_jwt'],
+      token_endpoint_auth_signing_alg_values_supported: ['RS256', 'ES256'],
+      revocation_endpoint_auth_methods_supported: ['none', 'client_secret_post', 'client_secret_basic', 'private_key_jwt'],
       scopes_supported: [...SCOPES],
       client_id_metadata_document_supported: true,
       authorization_response_iss_parameter_supported: true,
@@ -317,12 +323,12 @@ export class AuthorizationServer extends EventEmitter {
         case '/token':
           this.requireMethod(req, 'POST');
           if (!this.limits.token.take('global')) throw new OAuthError('temporarily_unavailable', 'Too many token requests; slow down.', 429);
-          sendJson(res, 200, this.token(await readForm(req), req, identity), TOKEN_HEADERS);
+          sendJson(res, 200, await this.token(await readForm(req), req, identity), TOKEN_HEADERS);
           return true;
         case '/revoke':
           this.requireMethod(req, 'POST');
           if (!this.limits.revoke.take('global')) throw new OAuthError('temporarily_unavailable', 'Too many requests.', 429);
-          this.revoke(await readForm(req), req);
+          await this.revoke(await readForm(req), req, identity);
           send(res, 200, '', 'text/plain', TOKEN_HEADERS);
           return true;
       }
@@ -432,7 +438,10 @@ export class AuthorizationServer extends EventEmitter {
           kind: 'cimd',
           name: sanitizeText(doc.client_name, 80) || new URL(clientId).host,
           redirectUris: doc.redirect_uris,
-          tokenEndpointAuthMethod: 'none',
+          tokenEndpointAuthMethod: doc.token_endpoint_auth_method,
+          jwksUri: doc.jwks_uri,
+          jwks: doc.jwks,
+          tokenEndpointAuthSigningAlg: doc.token_endpoint_auth_signing_alg,
           createdAt: this.now(),
           approved: false,
           scopes: [],
@@ -443,6 +452,10 @@ export class AuthorizationServer extends EventEmitter {
       } else {
         client.name = sanitizeText(doc.client_name, 80) || client.name;
         client.redirectUris = doc.redirect_uris;
+        client.tokenEndpointAuthMethod = doc.token_endpoint_auth_method;
+        client.jwksUri = doc.jwks_uri;
+        client.jwks = doc.jwks;
+        client.tokenEndpointAuthSigningAlg = doc.token_endpoint_auth_signing_alg;
       }
       this.opts.store.save();
       return client;
@@ -707,7 +720,7 @@ ${refresh ? `<meta http-equiv="refresh" content="2;url=${escapeHtml(refresh)}">`
 
   // ---------------------------------------------------------------- token endpoint
 
-  private authenticateClient(params: URLSearchParams, req: IncomingMessage): StoredClient {
+  private async authenticateClient(params: URLSearchParams, req: IncomingMessage, identity: Identity): Promise<StoredClient> {
     let clientId = params.get('client_id') ?? undefined;
     let secret = params.get('client_secret') ?? undefined;
     const header = req.headers.authorization;
@@ -722,10 +735,24 @@ ${refresh ? `<meta http-equiv="refresh" content="2;url=${escapeHtml(refresh)}">`
       secret = decodeURIComponent(decoded.slice(idx + 1));
       usedBasic = true;
     }
+    // private_key_jwt clients may omit client_id; take it from the (unverified) iss claim first.
+    if (!clientId && params.get('client_assertion')) {
+      try {
+        const payload = JSON.parse(Buffer.from(params.get('client_assertion')!.split('.')[1] ?? '', 'base64url').toString('utf8')) as { iss?: unknown };
+        if (typeof payload.iss === 'string') clientId = payload.iss;
+      } catch {
+        /* reported below as missing client_id */
+      }
+    }
     if (!clientId) throw new OAuthError('invalid_client', 'client_id is required', 401);
     const client = this.client(clientId);
     if (!client) throw new OAuthError('invalid_client', 'Unknown client', 401);
-    if (client.secretHash) {
+    if (client.tokenEndpointAuthMethod === 'private_key_jwt') {
+      if (secret || usedBasic) throw new OAuthError('invalid_client', 'This client authenticates with a JWT assertion, not a secret', 401);
+      await this.verifyAssertion(client, params, identity);
+    } else if (params.get('client_assertion') || params.get('client_assertion_type')) {
+      throw new OAuthError('invalid_client', 'This client is not registered for JWT assertion authentication', 401);
+    } else if (client.secretHash) {
       if (!secret || !safeEqual(sha256(secret), client.secretHash)) throw new OAuthError('invalid_client', 'Client authentication failed', 401);
     } else if (secret || usedBasic) {
       throw new OAuthError('invalid_client', 'This is a public client; do not send a client secret', 401);
@@ -733,9 +760,49 @@ ${refresh ? `<meta http-equiv="refresh" content="2;url=${escapeHtml(refresh)}">`
     return client;
   }
 
-  private token(params: URLSearchParams, req: IncomingMessage, identity: Identity) {
+  private async clientJwks(client: StoredClient): Promise<{ keys?: unknown[] }> {
+    if (client.jwks && Array.isArray(client.jwks.keys)) return client.jwks;
+    if (!client.jwksUri) throw new OAuthError('invalid_client', 'Client has no JWKS configured', 401);
+    const cached = this.jwksCache.get(client.jwksUri);
+    if (cached && cached.expiresAt > this.now()) return cached;
+    let doc: unknown;
+    try {
+      doc = await (this.opts.fetchJwks ?? ((u: string) => fetchJsonHttps(u, 64 * 1024, 'client JWKS')))(client.jwksUri);
+    } catch (error) {
+      throw new OAuthError('invalid_client', `Could not fetch client JWKS: ${(error as Error).message}`, 401);
+    }
+    const jwks = doc as { keys?: unknown[] };
+    if (!jwks || !Array.isArray(jwks.keys)) throw new OAuthError('invalid_client', 'Client JWKS is not a key set', 401);
+    this.jwksCache.set(client.jwksUri, { keys: jwks.keys, expiresAt: this.now() + 5 * 60 * 1000 });
+    return jwks;
+  }
+
+  private async verifyAssertion(client: StoredClient, params: URLSearchParams, identity: Identity): Promise<void> {
+    for (const [key, exp] of this.usedAssertions) if (exp < this.now()) this.usedAssertions.delete(key);
+    try {
+      verifyClientAssertion({
+        assertionType: params.get('client_assertion_type'),
+        assertion: params.get('client_assertion'),
+        clientId: client.clientId,
+        jwks: await this.clientJwks(client),
+        allowedAlg: client.tokenEndpointAuthSigningAlg,
+        audienceCandidates: [`${identity.baseUrl}/token`, identity.issuer, identity.baseUrl],
+        now: this.now(),
+        seenJti: (jti, expMs) => {
+          const key = `${client.clientId}:${jti}`;
+          if (this.usedAssertions.has(key)) return true;
+          this.usedAssertions.set(key, expMs);
+          return false;
+        },
+      });
+    } catch (error) {
+      throw new OAuthError('invalid_client', `Client authentication failed: ${(error as Error).message}`, 401);
+    }
+  }
+
+  private async token(params: URLSearchParams, req: IncomingMessage, identity: Identity) {
     const grantType = params.get('grant_type');
-    const client = this.authenticateClient(params, req);
+    const client = await this.authenticateClient(params, req, identity);
     const resource = params.get('resource');
     if (resource !== null && resource.replace(/\/$/, '') !== identity.resource && resource.replace(/\/$/, '') !== identity.baseUrl) {
       throw new OAuthError('invalid_target', 'resource does not identify this MCP server');
@@ -811,8 +878,8 @@ ${refresh ? `<meta http-equiv="refresh" content="2;url=${escapeHtml(refresh)}">`
     this.opts.store.save();
   }
 
-  private revoke(params: URLSearchParams, req: IncomingMessage): void {
-    const client = this.authenticateClient(params, req);
+  private async revoke(params: URLSearchParams, req: IncomingMessage, identity: Identity): Promise<void> {
+    const client = await this.authenticateClient(params, req, identity);
     const hash = sha256(params.get('token') ?? '');
     const access = this.accessTokens.get(hash);
     if (access && access.clientId === client.clientId) {

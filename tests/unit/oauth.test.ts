@@ -209,6 +209,75 @@ describe('dynamic client registration and client ID metadata documents', () => {
     env.cimdDocs.set(withSecret, { client_id: withSecret, redirect_uris: [redirect], token_endpoint_auth_method: 'client_secret_basic' });
     expect((await fetch(authorizeUrl(env, { clientId: withSecret, redirectUri: redirect }).url, { redirect: 'manual' })).status).toBe(400);
   });
+
+  it('authenticates CIMD clients with a private_key_jwt assertion', async () => {
+    const { generateKeyPairSync, sign } = await import('node:crypto');
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const jwk = publicKey.export({ format: 'jwk' });
+    jwk.kid = 'k1';
+    const cid = 'https://chat.example/oauth/client.json';
+    const jwksUri = 'https://chat.example/oauth/jwks.json';
+    const redirect = 'https://chat.example/connector/oauth/cb';
+    env.jwksDocs.set(jwksUri, { keys: [jwk] });
+    env.cimdDocs.set(cid, {
+      client_id: cid,
+      client_name: 'Chat Example',
+      redirect_uris: [redirect],
+      token_endpoint_auth_method: 'private_key_jwt',
+      token_endpoint_auth_signing_alg: 'RS256',
+      jwks_uri: jwksUri,
+    });
+
+    const { code, verifier } = await obtainCode(env, { clientId: cid, redirectUri: redirect });
+    const assertion = (claims: Record<string, unknown>, kid = 'k1') => {
+      const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT', kid })).toString('base64url');
+      const body = Buffer.from(JSON.stringify(claims)).toString('base64url');
+      const sig = sign('RSA-SHA256', Buffer.from(`${header}.${body}`), privateKey).toString('base64url');
+      return `${header}.${body}.${sig}`;
+    };
+    const claims = {
+      iss: cid,
+      sub: cid,
+      aud: `${env.base}/token`,
+      exp: Math.floor(env.clock.t / 1000) + 120,
+      iat: Math.floor(env.clock.t / 1000),
+      jti: randomToken(8),
+    };
+
+    const withoutAssertion = await token(env, { grant_type: 'authorization_code', code, redirect_uri: redirect, client_id: cid, code_verifier: verifier });
+    expect(withoutAssertion.status).toBe(401);
+
+    const second = await obtainCode(env, { clientId: cid, redirectUri: redirect });
+    const ok = await token(env, {
+      grant_type: 'authorization_code',
+      code: second.code,
+      redirect_uri: redirect,
+      code_verifier: second.verifier,
+      client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+      client_assertion: assertion(claims),
+    });
+    expect(ok.status).toBe(200);
+    expect(ok.json.access_token).toMatch(/^rbu_at_/);
+
+    const third = await obtainCode(env, { clientId: cid, redirectUri: redirect });
+    const wrongAud = await token(env, {
+      grant_type: 'authorization_code',
+      code: third.code,
+      redirect_uri: redirect,
+      code_verifier: third.verifier,
+      client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+      client_assertion: assertion({ ...claims, aud: 'https://other.example/token', jti: randomToken(8) }),
+    });
+    expect(wrongAud.status).toBe(401);
+
+    const replayed = await token(env, {
+      grant_type: 'refresh_token',
+      refresh_token: ok.json.refresh_token as string,
+      client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+      client_assertion: assertion(claims),
+    });
+    expect(replayed.status).toBe(401);
+  });
 });
 
 describe('token lifecycle', () => {

@@ -38,6 +38,7 @@ export interface OAuthEnv {
   auth: AuthorizationServer;
   listener: McpListener;
   cimdDocs: Map<string, unknown>;
+  jwksDocs: Map<string, unknown>;
   auditText(): string;
   close(): Promise<void>;
 }
@@ -51,6 +52,7 @@ export async function startOAuthEnv(opts: { publicUrl?: boolean } = {}): Promise
   if (opts.publicUrl !== false) store.state.publicUrl = normalizePublicUrl(base, port);
   const audit = new AuditLog(join(dir, 'audit.log'));
   const cimdDocs = new Map<string, unknown>();
+  const jwksDocs = new Map<string, unknown>();
   const auth = new AuthorizationServer({
     store,
     audit,
@@ -59,6 +61,10 @@ export async function startOAuthEnv(opts: { publicUrl?: boolean } = {}): Promise
     fetchClientMetadata: async (url) => {
       if (!cimdDocs.has(url)) throw new Error('not found');
       return cimdDocs.get(url);
+    },
+    fetchJwks: async (url) => {
+      if (!jwksDocs.has(url)) throw new Error('not found');
+      return jwksDocs.get(url);
     },
   });
   const listener = new McpListener({
@@ -84,6 +90,7 @@ export async function startOAuthEnv(opts: { publicUrl?: boolean } = {}): Promise
     auth,
     listener,
     cimdDocs,
+    jwksDocs,
     auditText: () => {
       try {
         return readFileSync(join(dir, 'audit.log'), 'utf8');
