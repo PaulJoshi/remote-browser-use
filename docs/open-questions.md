@@ -11,6 +11,8 @@
 - ChatGPT remote MCP: requires `private_key_jwt` support (its CIMD declares it, JWKS at chatgpt.com/oauth/jwks.json); in practice its connector also sends PKCE-only token requests when its metadata advertises `none`. Verified working end-to-end through a VS Code dev tunnel.
 - The tool is spelled `typeInPage`. A bundled fictional, no-login training fixture is the reliable demo/test target.
 
+**Published:** `remote-browser-use@0.1.0` on npm 2026-10-24 (manual publish via granular token; no provenance — private workflow). `npx remote-browser-use@0.1.0 --version` verified from the live registry.
+
 ## Owner decisions required before publication
 
 1. What license should the publicly installed package use, and will its source live in a public Git repository? npm provenance requires a matching public repository URL. This folder currently is **not** a Git repository; do not fabricate its URL or license.
