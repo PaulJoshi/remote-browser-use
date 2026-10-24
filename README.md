@@ -10,6 +10,16 @@ One command opens a dedicated browser (not your everyday Chrome profile), a loca
 
 No browser extension, no ZIP install, no hosted relay, and no access to your existing Chrome profile.
 
+## Why it exists
+
+**KILL THE BUSYWORK.** This project was born from a very ordinary annoyance: mandatory training portals that make you click "Next" through twenty slides, answer the same quiz questions, drag pretend emails into a "phishing" folder, and wait for a certificate nobody reads. Not hard work — just an hour of mechanical clicking between you and a checkbox on someone's compliance spreadsheet.
+
+remote-browser-use takes that whole annoying, repetitive job off your hands. Give an MCP-capable chat access to the dedicated browser and it *does* the work — navigates the gated slides, answers the quizzes, sorts the phish inbox, generates the certificate — instead of just telling you what to click. The bundled fictional course (`npx remote-browser-use demo`) demonstrates the complete workflow end to end, no external site required.
+
+And training portals are just the demo. The same tools apply to the other click-farms in your life: expense submissions, HR onboarding forms, admin dashboards, status-page updates, CRM data entry. If it's a real workflow inside a browser tab, an agent can run it to completion while you watch — or walk away.
+
+The security model exists *because* the workflow is real: the agent drives an isolated browser profile (your everyday logins are never touched), everything it does is visible live in a window you own, OAuth gates every connection, and the control panel can require per-tab sharing and per-action approval when real accounts are involved.
+
 ## How it works
 
 1. **Run it.** `npx remote-browser-use` downloads a matching Chromium build on first use (requires network; can take a few minutes), launches it with an isolated persistent profile, and opens the control panel.
@@ -41,7 +51,7 @@ Full details: [docs/03-security.md](docs/03-security.md).
 
 ## Requirements
 
-- Node.js **22.12+** (LTS), macOS or Linux desktop, ~300 MB disk for the Chromium build.
+- Node.js **22.12+** (LTS), macOS or Linux desktop, ~300 MB disk for the Chromium build. Windows is expected to work but is not yet verified on a real device.
 - A way to forward a local port over HTTPS for cloud chats (VS Code port forwarding, devtunnel, cloudflared, etc.).
 - An MCP-capable chat client that supports remote MCP servers with OAuth.
 
@@ -57,7 +67,7 @@ remote-browser-use --help    # full option reference
 
 ## Status
 
-Working implementation, verified on macOS with MCP Inspector and local end-to-end tests. Not yet published to npm — see [docs/06-publishing.md](docs/06-publishing.md). Known limitations and verified-client matrix live in [docs/open-questions.md](docs/open-questions.md) and the release notes.
+Working implementation, verified on macOS with MCP Inspector and local end-to-end tests; Windows support is implemented but not yet verified. Not yet published to npm — see [docs/06-publishing.md](docs/06-publishing.md). Known limitations and verified-client matrix live in [docs/open-questions.md](docs/open-questions.md) and the release notes.
 
 ## Development
 
@@ -67,6 +77,7 @@ npm run build      # TypeScript → dist/
 npm run lint && npm run typecheck
 npm test           # unit tests
 npm run test:e2e   # browser-backed security + training-flow tests
+npm run verify     # all of the above + npm pack content audit
 ```
 
 Design contract: [docs/01-product.md](docs/01-product.md) → [docs/06-publishing.md](docs/06-publishing.md). Maintainer notes: [CLAUDE.md](CLAUDE.md).
