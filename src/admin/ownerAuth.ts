@@ -12,8 +12,9 @@ export class LoginError extends Error {}
 
 /**
  * Owner authentication for the local control panel. A one-time code printed in
- * the terminal (never in a URL) bootstraps a durable, HttpOnly device cookie.
- * Loopback peer address is never treated as proof of ownership.
+ * the terminal and carried in the URL fragment of the panel the CLI opens
+ * (fragments are never sent in HTTP requests) bootstraps a durable, HttpOnly
+ * device cookie. Loopback peer address is never treated as proof of ownership.
  */
 export class OwnerAuth {
   private setupCode: string;

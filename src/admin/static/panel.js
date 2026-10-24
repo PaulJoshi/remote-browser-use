@@ -287,7 +287,19 @@
   }
 
   async function start() {
-    const session = await api('/api/session').catch(() => ({ authenticated: false }));
+    // The CLI opens the panel with the one-time setup code in the URL fragment
+    // (#k=...); fragments are never sent to the server. Strip it immediately.
+    const linkCode = location.hash.startsWith('#k=') ? location.hash.slice(3) : '';
+    if (linkCode) history.replaceState(null, '', location.pathname);
+    let session = await api('/api/session').catch(() => ({ authenticated: false }));
+    if (!session.authenticated && linkCode) {
+      try {
+        await api('/api/login', { code: linkCode });
+        session = await api('/api/session').catch(() => ({ authenticated: false }));
+      } catch (err) {
+        $('login-error').textContent = `Automatic sign-in did not work (${err.message}). Type the code printed in the terminal instead.`;
+      }
+    }
     if (!session.authenticated) {
       $('login').hidden = false;
       $('main').hidden = true;

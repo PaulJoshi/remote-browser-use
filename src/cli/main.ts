@@ -61,7 +61,7 @@ async function main(): Promise<void> {
   out(`Browser profile:   ${app.paths.profile}`);
   out(`Control panel:     ${app.adminUrl}   (local only — never forward this port)`);
   out(`MCP endpoint:      ${app.mcpUrl}   (forward port ${config.port} over HTTPS)`);
-  out(`Owner setup code:  ${app.setupCode}   (type it into the control panel; do not share it)`);
+  out(`Owner setup code:  ${app.setupCode}   (${config.openPanel ? 'already entered in the panel that opened; needed only for other browsers' : 'type it into the control panel'}; do not share it)`);
   out('');
   if (identity) {
     out(`Public URL:        ${identity.baseUrl}${config.publicUrl ? '' : '   (saved from a previous run; change it in the panel if your tunnel URL changed)'}`);
@@ -77,7 +77,7 @@ async function main(): Promise<void> {
   }
   out('');
   out('Press Ctrl+C to stop. Stopping ends all remote access; your browser profile is kept.');
-  if (config.openPanel) openInDefaultBrowser(app.adminUrl);
+  if (config.openPanel) openInDefaultBrowser(`${app.adminUrl}#k=${app.setupCode}`);
 
   let stopping = false;
   const stop = async (reason: string) => {
